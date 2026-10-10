@@ -289,6 +289,20 @@ Debug tip: `python -c "import app.main"` shows the real import error.
 
 ---
 
+## 10. Token bucket
+- Good: allows controlled bursts (capacity) while enforcing a sustained rate
+  (refill). Constant memory: two numbers per client. No window boundaries,
+  so no boundary burst. Recovers gradually instead of all at once.
+- Bad: two parameters to tune, and they are harder to explain than
+  "5 per 10 seconds". A big capacity lets a burst through all at once,
+  which could still hit a fragile backend.
+- Detail: rejected requests don't consume tokens, and refill is computed
+  lazily on each request (no background timer).
+- Takeaway: the best default for most APIs, and my current leading candidate
+  for the Tatkal rush, pending load tests.
+
+---
+
 ## 10. Status and next steps
 
 | Step | Item | Status |

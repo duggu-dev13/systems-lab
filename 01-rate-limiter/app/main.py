@@ -3,8 +3,11 @@ from fastapi.responses import JSONResponse
 from app.limiters.fixed_window import FixedWindowLimiter
 from app.limiters.sliding_log import SlidingLogLimiter
 from app.limiters.sliding_counter import SlidingCounterLimiter
+from app.limiters.token_bucket import TokenBucketLimiter
+
 app = FastAPI()
 
+limiter = TokenBucketLimiter(capacity=5, refill_per_sec=0.5)
 limiter = FixedWindowLimiter(limit=5, window_seconds=10)
 limiter = SlidingLogLimiter(limit=5, window_seconds=10)
 limiter = SlidingCounterLimiter(limit=5, window_seconds=10)
