@@ -5,7 +5,7 @@ class FakeClock:
         self.t = t
     def __call__(self):
         return self.t
-
+    
 def test_blocks_after_limit():
     clock = FakeClock()
     limiter = FixedWindowLimiter(limit=5, window_seconds=10, clock=clock)
