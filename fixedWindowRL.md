@@ -160,35 +160,6 @@ def ping():
 
 Middleware runs before every request, so one limiter protects all routes.
 
-### `app/limiters/sliding_log.py`
-
-```python
-import time
-from collections import deque
-from .base import RateLimiter, Decision
-
-class SlidingLogLimiter(RateLimiter):
-    def __init__(self, limit, window_seconds, clock=time.monotonic):
-        super().__init__(clock)
-        self.limit = limit
-        self.window = window_seconds
-        self.logs = {}   # key -> deque of request timestamps
-
-    def check(self, key):
-        now = self.clock()
-        log = self.logs.setdefault(key, deque())
-
-        while log and log[0] <= now - self.window:
-            log.popleft()
-
-        if len(log) >= self.limit:
-            retry_after = log[0] + self.window - now
-            return Decision(False, 0, retry_after)
-
-        log.append(now)
-        return Decision(True, self.limit - len(log), 0)
-```
-
 ---
 
 ## 5. Tests
@@ -208,13 +179,6 @@ class FakeClock:
 - `test_blocks_after_limit`: 5 allowed, then rejected.
 - `test_different_users_are_independent`: each key has its own counter.
 - `test_boundary_burst_bug`: 5 requests at t=9.9s and 5 more at t=10.1s all succeed. **10 requests in 0.2s under a "5 per 10s" limit.** This test passing documents the flaw.
-
-### `tests/test_sliding_log.py` (4 tests)
-
-- `test_blocks_after_limit`
-- `test_boundary_burst_is_fixed`: same times as the bug test, but the second batch is fully rejected.
-- `test_allows_again_after_window_passes`
-- `test_retry_after_is_accurate`
 
 Run all tests:
 
@@ -270,10 +234,6 @@ Debug tip: `python -c "import app.main"` shows the real import error.
 - Bad: boundary burst. A client can send 5 requests at t=9.9s and 5 more at
   t=10.1s, getting 10 requests through in 0.2 seconds.
 
-## Sliding window log
-- Good: exact. No boundary burst. Exact retry_after.
-- Bad: memory grows with the limit (one timestamp per request, per client).
-  10,000 req/min across a million clients could mean billions of timestamps.
 ```
 
 ---
@@ -288,23 +248,3 @@ Debug tip: `python -c "import app.main"` shows the real import error.
 - Accuracy costs memory (sliding log), which motivates approximations.
 
 ---
-
-## 10. Status and next steps
-
-| Step | Item | Status |
-|---|---|---|
-| 1-6 | Setup, base interface, fixed window, middleware, live test | Done |
-| 7 | Fixed window tests incl. boundary bug (3 passing) | Done |
-| 8 | Sliding window log + 4 tests | Code provided, verify 7 tests pass, then commit |
-| 9 | Sliding window counter (two counters, approximate) | Next |
-| 10 | Token bucket | Planned |
-| 11 | Prometheus + Grafana metrics | Planned |
-| 12 | k6 load tests, compare algorithms | Planned |
-| 13 | Redis + Lua distributed version | Planned |
-| 14 | Failure modes, headers, cleanup, final recommendation for IRCTC | Planned |
-
-**Git commits so far:**
-```
-sprint 1: fixed window limiter + boundary bug test
-sprint 2a: sliding window log   (after Step 8 tests pass)
-```
