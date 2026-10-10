@@ -303,7 +303,21 @@ Debug tip: `python -c "import app.main"` shows the real import error.
 
 ---
 
-## 10. Status and next steps
+## Metrics and observability
+- Decision: measure before comparing. Metrics (allowed/rejected, decision
+  latency, status codes) were added before load testing.
+- Algorithm is chosen with an env var (ALGO) so the same app and the same
+  dashboard can be used to compare all four.
+- /metrics is exempt from rate limiting. Otherwise the limiter would block
+  Prometheus itself and the graphs would have gaps.
+- Counters track totals and Prometheus computes rates. Histograms track
+  durations and give percentiles (p99), which averages hide.
+- Limitation: not tracking number of active keys yet. Needed to see memory
+  growth in the "many users" test.
+
+---
+
+## Status and next steps
 
 | Step | Item | Status |
 |---|---|---|
