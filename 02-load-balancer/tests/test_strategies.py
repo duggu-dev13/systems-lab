@@ -1,4 +1,7 @@
-from lb.strategies import RoundRobin
+from lb.strategies import RoundRobin, LeastConnections, WeightedRoundRobin
+
+
+# ---- Step 5: round robin ----
 
 def test_cycles_in_order():
     rr = RoundRobin(["a", "b", "c"])
@@ -13,7 +16,8 @@ def test_even_distribution():
     picks = [rr.pick() for _ in range(300)]
     assert picks.count("a") == picks.count("b") == picks.count("c") == 100
 
-from lb.strategies import LeastConnections, WeightedRoundRobin
+
+# ---- Step 6: least connections and weighted ----
 
 def test_least_connections_avoids_busy_backend():
     lc = LeastConnections(["a", "b", "c"])
@@ -46,3 +50,33 @@ def test_weighted_matches_weights():
 def test_weighted_is_smooth():
     w = WeightedRoundRobin(["a", "b", "c"], [3, 1, 1])
     assert [w.pick() for _ in range(5)] == ["a", "b", "a", "c", "a"]
+
+# ---- Step 7: health awareness ----
+
+def test_round_robin_skips_unhealthy():
+    rr = RoundRobin(["a", "b", "c"])
+    rr.set_healthy("b", False)
+    assert [rr.pick() for _ in range(4)] == ["a", "c", "a", "c"]
+
+def test_round_robin_returns_none_when_all_down():
+    rr = RoundRobin(["a", "b", "c"])
+    for name in ["a", "b", "c"]:
+        rr.set_healthy(name, False)
+    assert rr.pick() is None
+
+def test_least_connections_skips_unhealthy():
+    lc = LeastConnections(["a", "b", "c"])
+    lc.set_healthy("a", False)
+    picks = [lc.pick() for _ in range(6)]
+    assert "a" not in picks
+    assert picks.count("b") == 3 and picks.count("c") == 3
+
+def test_weighted_skips_unhealthy_and_recovers():
+    w = WeightedRoundRobin(["a", "b", "c"], [3, 1, 1])
+    w.set_healthy("a", False)
+    picks = [w.pick() for _ in range(10)]
+    assert "a" not in picks
+    assert picks.count("b") == 5 and picks.count("c") == 5
+    w.set_healthy("a", True)
+    cycle = [w.pick() for _ in range(5)]
+    assert cycle.count("a") == 3 and cycle.count("b") == 1 and cycle.count("c") == 1

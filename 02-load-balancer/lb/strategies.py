@@ -2,12 +2,27 @@ import os
 
 
 class Strategy:
-    """Every strategy picks a backend, and is told when a request finishes."""
+    """Picks a backend for each request. Only healthy backends are eligible."""
 
     def __init__(self, backends):
         self.backends = list(backends)
+        self.healthy = set(self.backends)
+
+    def available(self):
+        return [b for b in self.backends if b in self.healthy]
+
+    def set_healthy(self, backend, is_healthy):
+        if is_healthy:
+            self.healthy.add(backend)
+        else:
+            self.healthy.discard(backend)
+        self.on_change()
+
+    def on_change(self):
+        pass
 
     def pick(self):
+        """Return a backend, or None if no backend is healthy."""
         raise NotImplementedError
 
     def release(self, backend):
@@ -20,7 +35,10 @@ class RoundRobin(Strategy):
         self.i = 0
 
     def pick(self):
-        backend = self.backends[self.i % len(self.backends)]
+        avail = self.available()
+        if not avail:
+            return None
+        backend = avail[self.i % len(avail)]
         self.i += 1
         return backend
 
@@ -32,8 +50,11 @@ class LeastConnections(Strategy):
         self.i = 0                                    # rotates among ties
 
     def pick(self):
-        fewest = min(self.active.values())
-        candidates = [b for b in self.backends if self.active[b] == fewest]
+        avail = self.available()
+        if not avail:
+            return None
+        fewest = min(self.active[b] for b in avail)
+        candidates = [b for b in avail if self.active[b] == fewest]
         backend = candidates[self.i % len(candidates)]
         self.i += 1
         self.active[backend] += 1
@@ -50,13 +71,20 @@ class WeightedRoundRobin(Strategy):
         super().__init__(backends)
         self.weights = dict(zip(self.backends, weights))
         self.current = {b: 0 for b in self.backends}
-        self.total = sum(weights)
+
+    def on_change(self):
+        # the set of eligible backends changed, so start the cycle fresh
+        self.current = {b: 0 for b in self.backends}
 
     def pick(self):
-        for b in self.backends:
+        avail = self.available()
+        if not avail:
+            return None
+        total = sum(self.weights[b] for b in avail)
+        for b in avail:
             self.current[b] += self.weights[b]
-        backend = max(self.backends, key=lambda b: self.current[b])
-        self.current[backend] -= self.total
+        backend = max(avail, key=lambda b: self.current[b])
+        self.current[backend] -= total
         return backend
 
 

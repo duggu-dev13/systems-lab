@@ -1,8 +1,11 @@
+import asyncio
+from contextlib import asynccontextmanager, suppress
+
 import httpx
-from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
+from lb.health import HealthTracker, health_loop
 from lb.strategies import build_strategy
 
 BACKENDS = [
@@ -10,10 +13,8 @@ BACKENDS = [
     "http://127.0.0.1:9002",
     "http://127.0.0.1:9003",
 ]
-
 strategy = build_strategy(BACKENDS)
-# strategy = RoundRobin(BACKENDS)
-
+tracker = HealthTracker(BACKENDS)
 
 # Headers that describe one network hop and must not be copied across
 HOP_HEADERS = {
@@ -21,17 +22,36 @@ HOP_HEADERS = {
     "te", "trailers", "transfer-encoding", "upgrade", "host", "content-length",
 }
 
+
 @asynccontextmanager
 async def lifespan(app):
     app.state.client = httpx.AsyncClient(timeout=10.0)
+    checker = asyncio.create_task(health_loop(app.state.client, strategy, tracker))
     yield
+    checker.cancel()
+    with suppress(asyncio.CancelledError):
+        await checker
     await app.state.client.aclose()
 
+
 app = FastAPI(lifespan=lifespan)
+
+
+# Must be defined before the catch-all route below
+@app.get("/_lb/status")
+async def status():
+    return {
+        "healthy": {b: (b in strategy.healthy) for b in BACKENDS},
+        "in_flight": getattr(strategy, "active", None),
+    }
+
 
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
 async def proxy(path: str, request: Request):
     backend = strategy.pick()
+    if backend is None:
+        return JSONResponse({"error": "no healthy backends"}, status_code=503)
+
     headers = {k: v for k, v in request.headers.items() if k.lower() not in HOP_HEADERS}
     headers["x-forwarded-for"] = request.client.host
 
