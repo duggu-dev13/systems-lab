@@ -3,14 +3,17 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
-from lb.strategies import RoundRobin
+from lb.strategies import build_strategy
 
 BACKENDS = [
     "http://127.0.0.1:9001",
     "http://127.0.0.1:9002",
     "http://127.0.0.1:9003",
 ]
-strategy = RoundRobin(BACKENDS)
+
+strategy = build_strategy(BACKENDS)
+# strategy = RoundRobin(BACKENDS)
+
 
 # Headers that describe one network hop and must not be copied across
 HOP_HEADERS = {
@@ -42,6 +45,8 @@ async def proxy(path: str, request: Request):
         )
     except httpx.HTTPError:
         return JSONResponse({"error": "bad gateway", "backend": backend}, status_code=502)
+    finally:
+        strategy.release(backend)
 
     # httpx already decoded the body, so drop headers that describe the encoded one
     response_headers = {
