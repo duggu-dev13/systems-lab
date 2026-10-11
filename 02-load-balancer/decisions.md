@@ -24,3 +24,25 @@
 - Weighted (smooth, as in nginx) is for unequal servers. Weights are static:
   it can't react to a server that is slow right now.
 - Still missing: none of these know a backend is dead (health checks, Step 7).
+
+## Timeouts and retries
+- Each attempt has its own timeout: 0.5s to connect, 2s for a reply.
+  Too short = healthy-but-slow servers get abandoned. Too long = clients wait.
+- Retries go to a DIFFERENT backend each time, max 3 attempts total.
+- Whether a retry is safe depends on how the attempt failed:
+  - Connect failure: request never arrived, safe for every method.
+  - Read timeout / reset: backend may have done the work. Only retry
+    idempotent methods (GET, HEAD, OPTIONS, PUT, DELETE), never POST/PATCH.
+- Experiment 1: killing B during traffic, errors before retries: <paste>,
+  after retries: <paste>.
+- Experiment 2 (RETRY_UNSAFE=1): one POST /book created <paste> bookings
+  and the client still got a 504.
+- Experiment 3 (safe default): one booking, but the client still got 504.
+  The proxy cannot know whether the booking happened. The real fix is an
+  idempotency key from the client (lab 6).
+- Status codes: 502 = unreachable/broken, 504 = too slow, 503 = nothing healthy.
+- Retries advance the round-robin counter, which can slightly skew the
+  distribution while a backend is failing. Acceptable for now.
+- Not built: backoff/jitter, a retry budget (retries amplify load in an
+  overload), retrying on 5xx responses, and passive health checks (marking a
+  backend down after real failed requests, not only the periodic ones).
