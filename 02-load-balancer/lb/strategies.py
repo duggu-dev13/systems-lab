@@ -8,8 +8,8 @@ class Strategy:
         self.backends = list(backends)
         self.healthy = set(self.backends)
 
-    def available(self):
-        return [b for b in self.backends if b in self.healthy]
+    def available(self, exclude=()):
+        return [b for b in self.backends if b in self.healthy and b not in exclude]
 
     def set_healthy(self, backend, is_healthy):
         if is_healthy:
@@ -21,8 +21,8 @@ class Strategy:
     def on_change(self):
         pass
 
-    def pick(self):
-        """Return a backend, or None if no backend is healthy."""
+    def pick(self, exclude=()):
+        """Return a backend, or None if none is eligible (all unhealthy or excluded)."""
         raise NotImplementedError
 
     def release(self, backend):
@@ -34,8 +34,8 @@ class RoundRobin(Strategy):
         super().__init__(backends)
         self.i = 0
 
-    def pick(self):
-        avail = self.available()
+    def pick(self, exclude=()):
+        avail = self.available(exclude)
         if not avail:
             return None
         backend = avail[self.i % len(avail)]
@@ -49,8 +49,8 @@ class LeastConnections(Strategy):
         self.active = {b: 0 for b in self.backends}   # requests in flight
         self.i = 0                                    # rotates among ties
 
-    def pick(self):
-        avail = self.available()
+    def pick(self, exclude=()):
+        avail = self.available(exclude)
         if not avail:
             return None
         fewest = min(self.active[b] for b in avail)
@@ -76,8 +76,8 @@ class WeightedRoundRobin(Strategy):
         # the set of eligible backends changed, so start the cycle fresh
         self.current = {b: 0 for b in self.backends}
 
-    def pick(self):
-        avail = self.available()
+    def pick(self, exclude=()):
+        avail = self.available(exclude)
         if not avail:
             return None
         total = sum(self.weights[b] for b in avail)
