@@ -46,3 +46,17 @@
 - Not built: backoff/jitter, a retry budget (retries amplify load in an
   overload), retrying on 5xx responses, and passive health checks (marking a
   backend down after real failed requests, not only the periodic ones).
+
+## Metrics for the load balancer
+- Apps run on the host, Prometheus + Grafana in Docker (same as lab 1).
+  Apps need --host 0.0.0.0 so the containers can reach them.
+- Two views of backend health on purpose: lb_backend_up (the balancer's
+  belief) vs up{job="backends"} (Prometheus's scrape). The gap between them
+  is the detection delay.
+- Per-attempt outcomes (ok / connect_failed / timeout / error) recorded per
+  backend, so a failing backend is visible even when clients see no errors
+  (retries hide them).
+- Gauges refreshed at scrape time, because they describe "now".
+- Backend path label comes from the matched route, not the raw URL, to keep
+  label cardinality bounded.
+- /metrics defined before the catch-all route, or it would be proxied.
