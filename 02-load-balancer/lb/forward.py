@@ -1,9 +1,6 @@
 from dataclasses import dataclass, field
-
 import httpx
-
-from lb.retry import may_retry
-
+from lb.retry import classify, may_retry
 
 @dataclass
 class Result:
@@ -12,6 +9,7 @@ class Result:
     attempts: int = 0
     tried: list = field(default_factory=list)
     error: Exception = None                  # the last failure, if none succeeded
+    attempt_log: list = field(default_factory=list)   # [(backend, outcome), ...]
 
 
 async def forward(client, strategy, method, path, params, body, headers,
@@ -29,9 +27,11 @@ async def forward(client, strategy, method, path, params, body, headers,
                 params=params, content=body, headers=headers, timeout=timeout,
             )
             result.backend = backend
+            result.attempt_log.append((backend, "ok"))
             return result
         except httpx.HTTPError as exc:
             result.error = exc
+            result.attempt_log.append((backend, classify(exc)))
             if not may_retry(method, exc, retry_unsafe):
                 break
         finally:

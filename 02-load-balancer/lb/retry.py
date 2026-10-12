@@ -15,3 +15,11 @@ def may_retry(method, exc, retry_unsafe=False):
     # Anything else (read timeout, connection reset mid-response...) is ambiguous:
     # the backend may have done the work and only the reply was lost.
     return method.upper() in IDEMPOTENT_METHODS or retry_unsafe
+
+def classify(exc):
+    """Short label for how an attempt failed (used for metrics)."""
+    if isinstance(exc, NEVER_REACHED):
+        return "connect_failed"
+    if isinstance(exc, httpx.TimeoutException):
+        return "timeout"
+    return "error"

@@ -32,15 +32,20 @@ class Strategy:
 class RoundRobin(Strategy):
     def __init__(self, backends):
         super().__init__(backends)
-        self.i = 0
+        self.i = 0                      # position in the full list of backends
 
     def pick(self, exclude=()):
-        avail = self.available(exclude)
-        if not avail:
-            return None
-        backend = avail[self.i % len(avail)]
-        self.i += 1
-        return backend
+        # Walk the ring from the current position and take the first eligible
+        # backend. A retry therefore moves to the NEXT backend in the ring,
+        # instead of consuming an extra turn and skewing the rotation.
+        n = len(self.backends)
+        for offset in range(n):
+            index = (self.i + offset) % n
+            backend = self.backends[index]
+            if backend in self.healthy and backend not in exclude:
+                self.i = index + 1
+                return backend
+        return None
 
 
 class LeastConnections(Strategy):

@@ -87,3 +87,22 @@ def test_in_flight_counts_return_to_zero_after_retries():
     r = run(client, strategy)
     assert r.backend == "c"
     assert all(count == 0 for count in strategy.active.values())
+
+def test_load_stays_even_on_survivors_while_a_backend_is_dead():
+    strategy = RoundRobin(B)
+    client = FakeClient({"b": httpx.ConnectError("refused")})
+    served = {"a": 0, "c": 0}
+    for _ in range(300):
+        served[run(client, strategy).backend] += 1
+    assert served == {"a": 150, "c": 150}
+
+def test_attempt_log_records_failure_then_success():
+    client = FakeClient({"a": httpx.ConnectError("refused")})
+    r = run(client, RoundRobin(B))
+    assert r.attempt_log[0] == ("a", "connect_failed")
+    assert r.attempt_log[1][1] == "ok" and len(r.attempt_log) == 2
+
+def test_attempt_log_records_every_failed_attempt():
+    client = FakeClient({x: httpx.ReadTimeout("slow") for x in B})
+    r = run(client, RoundRobin(B))
+    assert [outcome for _, outcome in r.attempt_log] == ["timeout"] * 3

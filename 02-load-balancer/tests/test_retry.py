@@ -23,3 +23,10 @@ def test_method_name_is_case_insensitive():
 
 def test_unsafe_flag_allows_post_retry():
     assert may_retry("POST", httpx.ReadTimeout("no reply"), retry_unsafe=True) is True
+
+def test_classify_labels_each_failure_kind():
+    from lb.retry import classify
+    assert classify(httpx.ConnectError("x")) == "connect_failed"
+    assert classify(httpx.ConnectTimeout("x")) == "connect_failed"
+    assert classify(httpx.ReadTimeout("x")) == "timeout"
+    assert classify(httpx.ReadError("x")) == "error"

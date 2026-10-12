@@ -40,11 +40,13 @@ async def check_one(client, backend):
         return False
 
 
-async def health_loop(client, strategy, tracker):
+async def health_loop(client, strategy, tracker, on_change=None):
     while True:
         results = await asyncio.gather(*(check_one(client, b) for b in strategy.backends))
         for backend, ok in zip(strategy.backends, results):
             if tracker.record(backend, ok):
                 strategy.set_healthy(backend, ok)
+                if on_change:
+                    on_change(backend, ok)
                 print(f"[health] {backend} is now {'UP' if ok else 'DOWN'}", flush=True)
         await asyncio.sleep(INTERVAL)
