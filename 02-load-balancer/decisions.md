@@ -60,3 +60,19 @@
 - Backend path label comes from the matched route, not the raw URL, to keep
   label cardinality bounded.
 - /metrics defined before the catch-all route, or it would be proxied.
+
+## Rate limiting behind a load balancer
+- Copied the lab 1 limiters into backend/limiters. Limiting is off by default
+  (LIMIT=0) so earlier experiments are unchanged.
+- Client identity comes from x-forwarded-for (set by the proxy). Without it
+  every client looks like the proxy. Only safe because only the proxy talks to
+  the backends.
+- 429 is a valid response, not a failure: the proxy passes it through and does
+  not retry it.
+- Measured (limit 5/s per server, 60 req/s offered, 20s):
+  - one backend directly: <paste> allowed (expected ~100)
+  - through the load balancer: <paste> allowed (expected ~300)
+  - effective limit = N servers x per-server limit.
+- Killing one backend lowered the effective limit by a third: <paste>.
+- Conclusion: per-server in-memory limiting cannot enforce a global limit.
+  Needs shared state (Redis), which brings atomicity and fail-open/closed.
