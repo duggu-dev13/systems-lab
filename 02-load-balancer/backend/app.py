@@ -1,7 +1,9 @@
 import os
 import asyncio
 from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, generate_latest
+from backend.ratelimit import build_limiter, client_key
 
 app = FastAPI()
 NAME = os.getenv("SERVER_NAME", "backend")
@@ -10,12 +12,31 @@ NAME = os.getenv("SERVER_NAME", "backend")
 CAPACITY = int(os.getenv("CAPACITY", "2"))
 slots = asyncio.Semaphore(CAPACITY)
 
+limiter = build_limiter()      # None unless LIMIT is set
+EXEMPT = ("/metrics", "/health", "/_admin")   # never rate limited
+
 REQUESTS = Counter("backend_requests_total", "Requests handled by this backend",
                    ["server", "path"])
+RATELIMIT = Counter("backend_ratelimit_total", "Rate limiter decisions on this backend",
+                    ["server", "decision"])
 
 
 @app.middleware("http")
-async def count_requests(request: Request, call_next):
+async def guard(request: Request, call_next):
+    # 1. rate limit
+    if limiter is not None and not request.url.path.startswith(EXEMPT):
+        key = client_key(request.headers, request.client.host)
+        decision = limiter.check(key)
+        if not decision.allowed:
+            RATELIMIT.labels(NAME, "rejected").inc()
+            return JSONResponse(
+                {"error": "too many requests", "served_by": NAME},
+                status_code=429,
+                headers={"Retry-After": str(int(decision.retry_after) + 1)},
+            )
+        RATELIMIT.labels(NAME, "allowed").inc()
+
+    # 2. handle the request, then count it
     response = await call_next(request)
     route = request.scope.get("route")           # the matched route, e.g. "/api/ping"
     path = route.path if route else "other"      # avoids one label value per random URL
